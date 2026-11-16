@@ -1,0 +1,217 @@
+<a-scene landing-page xrextras-loading xrextras-runtime-error xrweb>
+  <a-camera
+    id="camera"
+    position="0 6 0"
+    raycaster="objects: .cantap"
+    cursor="fuse: false; rayOrigin: mouse"></a-camera>
+
+  <a-light type="ambient" intensity="1.0"></a-light>
+  <a-light type="directional" intensity="0.7" position="1 4.3 2.5"></a-light>
+  <!-- Hemisphere light: critical for PBR glTF materials in a plain A-Frame
+       scene with no environment map — without it, metallic/rough materials
+       read as flat black because they have nothing plausible to reflect. -->
+  <a-light type="hemisphere" color="#ffffff" ground-color="#5a4a37" intensity="0.9"></a-light>
+
+  <a-entity id="th-chest-root"></a-entity>
+  <a-entity
+    id="th-ground"
+    geometry="primitive: plane; height: 1000; width: 1000"
+    rotation="-90 0 0"
+    material="opacity: 0; transparent: true"
+    class="cantap"></a-entity>
+</a-scene>
+
+<div class="th-hud" aria-live="polite">
+  <div class="th-topline th-glass">
+    <span id="th-mode">Choose mode</span>
+    <span id="th-counter">0 / 0 found</span>
+  </div>
+  <div id="th-status" class="th-status th-glass">Start as hider or seeker.</div>
+  <div id="th-hunt-hud" class="th-hunt-hud" hidden></div>
+  <div id="th-method" class="th-method">IDLE</div>
+</div>
+
+<div id="th-toast" class="th-toast th-glass" role="status" hidden></div>
+
+<section id="th-start" class="th-panel th-start th-glass th-glass-sheen">
+  <span class="th-kicker">Two-phone expedition demo</span>
+  <h1>AR Treasure Hunt</h1>
+  <p>Hide chests in the room for a friend, or set out to find theirs.</p>
+  <div class="th-actions">
+    <button id="th-start-hide" type="button">Hide treasure</button>
+    <button id="th-start-seek" type="button">Seek treasure</button>
+  </div>
+  <!-- Third affordance: load an existing hunt (by its share code) back into
+       hide mode for editing, instead of only fresh-authoring or seeking.
+       Codes are case-sensitive (see CODE_CHARS in share.js) — no
+       autocapitalize/autocorrect/uppercase transform here. -->
+  <div class="th-edit-row">
+    <span class="th-edit-row-label">or edit a hunt you made</span>
+    <div class="th-join-row th-edit-join-row">
+      <input id="th-edit-code-input" type="text" maxlength="6" placeholder="Enter code" spellcheck="false" autocomplete="off" autocapitalize="none" autocorrect="off" inputmode="text" />
+      <button id="th-edit-load" class="th-btn th-btn-sm" type="button">Load</button>
+    </div>
+  </div>
+</section>
+
+<section id="th-hide-panel" class="th-panel th-hide-panel th-glass" hidden>
+  <div class="th-actions">
+    <button id="th-scan" class="th-btn" type="button">Start scan</button>
+    <button id="th-build" class="th-btn" type="button" disabled>Build map</button>
+    <button id="th-place" class="th-btn" type="button" disabled>Place chest</button>
+    <button id="th-share" class="th-btn" type="button" disabled>Share hunt</button>
+  </div>
+  <div id="th-scan-assist" class="th-assist" hidden></div>
+  <div id="th-code-wrap" class="th-code-wrap" hidden>
+    <div class="th-code-label">Hunt code</div>
+    <div id="th-code" class="th-code"></div>
+    <div id="th-share-note" class="th-note"></div>
+  </div>
+</section>
+
+<!-- Compact completion state shown after a hide-mode share succeeds, so the
+     flow doesn't dead-end on the share panel. -->
+<section id="th-hunt-live-bar" class="th-live-bar th-glass" hidden>
+  <div class="th-live-info">
+    <span class="th-live-label">Hunt live</span>
+    <span id="th-live-code" class="th-live-code"></span>
+    <span id="th-live-chest-count" class="th-live-chests"></span>
+  </div>
+  <div class="th-live-actions">
+    <button id="th-live-copy" class="th-btn th-btn-sm" type="button">Copy code</button>
+    <button id="th-new-hunt" class="th-btn th-btn-sm" type="button">New hunt</button>
+  </div>
+</section>
+
+<section id="th-seek-panel" class="th-panel th-seek-panel th-glass" hidden>
+  <div class="th-join-row">
+    <input id="th-code-input" type="text" maxlength="6" placeholder="Enter code" spellcheck="false" autocomplete="off" autocapitalize="none" autocorrect="off" inputmode="text" />
+    <button id="th-load-code" class="th-btn" type="button">Load</button>
+  </div>
+  <div id="th-spots" class="th-spots"></div>
+  <button id="th-refresh-spots" class="th-btn" type="button">Refresh nearby spots</button>
+</section>
+
+<!-- Back-to-code-entry affordance, shown once a hunt is loaded so seekers can
+     bail out if the wrong code/spot was picked. -->
+<button id="th-seek-back" class="th-seek-back th-glass" type="button" hidden>&larr; Back to code</button>
+
+<!-- Picture-in-picture alignment guide: a small tappable glass thumbnail
+     (docked top corner) instead of a fullscreen overlay, so the camera view
+     stays visible while aligning. Tap the thumbnail to expand/shrink.
+     The Align button is a separate sibling (#th-align-dock) so this
+     thumbnail can never intercept its taps; game.js toggles both together. -->
+<section id="th-align-guide" class="th-align-guide th-glass" hidden>
+  <img id="th-align-guide-img" alt="Reference view for alignment — tap to enlarge" />
+  <span class="th-align-hint">Match this view, then align.</span>
+</section>
+
+<div id="th-align-dock" class="th-align-dock th-glass" hidden>
+  <!-- While auto-retrying, #th-align-spinner shows a minimal
+       icon/progress bar (game.js toggles .th-aligning on the dock). -->
+  <span id="th-align-spinner" class="th-align-spinner" aria-hidden="true"></span>
+  <span id="th-align-hint">Match the reference, then align.</span>
+  <button id="th-align" type="button">Align</button>
+</div>
+
+<!-- Full-viewport confetti overlay, shown for a few seconds right when
+     the last chest is opened, before the #th-victory panel appears. Pieces
+     are injected/cleared by game.js; the container itself has a transparent
+     background so the live camera feed stays visible through it. -->
+<div id="th-confetti" class="th-confetti" aria-hidden="true" hidden></div>
+
+<section id="th-victory" class="th-panel th-victory th-glass th-glass-sheen" hidden>
+  <h2>All treasure found</h2>
+  <p id="th-victory-count"></p>
+  <button id="th-play-again" class="th-btn" type="button">Play again</button>
+</section>
+
+<!-- Content picker: shown right after the hider taps the ground to place a
+     chest, so they can attach the surprise that chest reveals on open. Flow
+     is "tap ground first, then pick content" — placement feedback is
+     immediate (chest appears right away) and the picker is a lightweight
+     follow-up the hider can dismiss/skip via "Use default" for a quick 💎. -->
+<section id="th-content-picker" class="th-content-picker th-glass th-glass-sheen" hidden>
+  <button class="th-collapse-handle" type="button" aria-label="Collapse panel">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 9 L12 16 L20 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <h3>What's inside?</h3>
+  <p>Choose what this chest reveals when tapped open.</p>
+  <div class="th-content-tabs" role="tablist">
+    <button type="button" class="th-content-tab" data-kind="emoji" aria-selected="true">Emoji</button>
+    <button type="button" class="th-content-tab" data-kind="image" aria-selected="false">Image</button>
+    <button type="button" class="th-content-tab" data-kind="glb" aria-selected="false">3D model</button>
+  </div>
+
+  <div id="th-content-pane-emoji" class="th-content-pane">
+    <div id="th-emoji-quickpick" class="th-emoji-quickpick">
+      <button type="button" class="th-emoji-choice" aria-pressed="true">💎</button>
+      <button type="button" class="th-emoji-choice" aria-pressed="false">🏆</button>
+      <button type="button" class="th-emoji-choice" aria-pressed="false">💰</button>
+      <button type="button" class="th-emoji-choice" aria-pressed="false">🎁</button>
+      <button type="button" class="th-emoji-choice" aria-pressed="false">👑</button>
+      <button type="button" class="th-emoji-choice" aria-pressed="false">⭐</button>
+      <button type="button" class="th-emoji-choice" aria-pressed="false">🍀</button>
+    </div>
+    <input id="th-emoji-input" type="text" maxlength="4" placeholder="or type an emoji" spellcheck="false" autocomplete="off" autocapitalize="none" autocorrect="off" />
+  </div>
+
+  <div id="th-content-pane-image" class="th-content-pane" hidden>
+    <input id="th-image-input" type="file" accept="image/jpeg,image/png,image/gif" />
+  </div>
+
+  <div id="th-content-pane-glb" class="th-content-pane" hidden>
+    <input id="th-glb-input" type="file" accept=".glb,model/gltf-binary" />
+    <p id="th-glb-warning" class="th-content-note" hidden>This model is large — sharing may be slow or fail.</p>
+  </div>
+
+  <div class="th-actions">
+    <button id="th-content-skip" class="th-btn th-btn-sm" type="button">Use default 💎</button>
+    <button id="th-content-confirm" class="th-btn th-btn-sm" type="button">Save content</button>
+  </div>
+</section>
+
+<!-- CHANGE 5: fine-tune panel for a selected chest, hide-mode only. Hidden by
+     default; appears only while a chest is selected (tap a placed chest in
+     hide mode to select it). Done closes it and deselects. -->
+<section id="th-adjust-panel" class="th-adjust-panel th-glass th-glass-sheen" hidden>
+  <button class="th-collapse-handle" type="button" aria-label="Collapse panel">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 9 L12 16 L20 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <div class="th-adjust-head">
+    <h3>Adjust chest</h3>
+    <p id="th-adjust-summary">rot 0&deg; &middot; scale 1.0&times;</p>
+  </div>
+
+  <div class="th-adjust-row th-adjust-row--position">
+    <span class="th-adjust-label">Position</span>
+    <div class="th-adjust-dpad">
+      <button id="th-adjust-z-neg" class="th-dpad-btn th-dpad-btn--up" type="button" aria-label="Move away">&uarr;</button>
+      <button id="th-adjust-x-neg" class="th-dpad-btn th-dpad-btn--left" type="button" aria-label="Move left">&larr;</button>
+      <button id="th-adjust-y-pos" class="th-dpad-btn th-dpad-btn--center" type="button" aria-label="Move up">Y&plus;</button>
+      <button id="th-adjust-x-pos" class="th-dpad-btn th-dpad-btn--right" type="button" aria-label="Move right">&rarr;</button>
+      <button id="th-adjust-z-pos" class="th-dpad-btn th-dpad-btn--down" type="button" aria-label="Move closer">&darr;</button>
+      <button id="th-adjust-y-neg" class="th-dpad-btn th-dpad-btn--center2" type="button" aria-label="Move down">Y&minus;</button>
+    </div>
+  </div>
+
+  <div class="th-adjust-row">
+    <span class="th-adjust-label">Rotation</span>
+    <input id="th-adjust-rot-slider" class="th-slider" type="range" min="0" max="360" step="5" value="0" aria-label="Rotation degrees" />
+  </div>
+
+  <div class="th-adjust-row">
+    <span class="th-adjust-label">Scale</span>
+    <input id="th-adjust-scale-slider" class="th-slider" type="range" min="0.5" max="10" step="0.1" value="1" aria-label="Scale multiplier" />
+  </div>
+
+  <!-- Content size relative to the chest (objectPose.contentScale) -->
+  <div class="th-adjust-row">
+    <span class="th-adjust-label">Content</span>
+    <input id="th-adjust-content-slider" class="th-slider" type="range" min="0.3" max="3" step="0.1" value="1" aria-label="Content size relative to chest" />
+  </div>
+
+  <div class="th-actions">
+    <button id="th-adjust-done" class="th-btn th-btn-sm" type="button">Done</button>
+  </div>
+</section>

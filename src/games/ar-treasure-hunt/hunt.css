@@ -1,0 +1,1469 @@
+@charset "UTF-8";
+/* ==========================================================================
+   AR Treasure Hunt — "Liquid Glass Expedition" theme
+   Translucent, blurred glass surfaces float over a live AR camera feed.
+   Warm amber/gold expedition identity (Fraunces + Space Mono) is preserved,
+   but every surface is now light, blurred glass rather than an opaque slab —
+   the camera feed must stay visible through and around every panel.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700;9..144,900&family=Space+Mono:wght@400;700&display=swap');
+
+/* Author `display` rules beat the UA `[hidden]` rule, so force `hidden` to win
+   for every hunt panel. */
+[hidden] {
+  display: none !important;
+}
+
+/* Overlay chrome stays hidden until the AR camera pipeline is running
+   (body.th-ar-ready, set by game.js on the scene's 'realityready' event or a
+   fallback timer). Prevents the start screen / HUD from covering the 8th Wall
+   landing-page permission prompt on first load. */
+body:not(.th-ar-ready) .th-hud,
+body:not(.th-ar-ready) .th-panel {
+  display: none !important;
+}
+
+:root {
+  --th-ink: #fdf6e3;
+  --th-parchment: #f3e6c9;
+  --th-gold: #fbbf24;
+  --th-gold-bright: #ffd873;
+  --th-gold-dim: rgba(251, 191, 36, 0.45);
+  --th-copper: #b45309;
+  --th-emerald: #34d399;
+  --th-ember: #f87171;
+  --th-ground-0: #0b0704;
+  --th-ground-1: #16100a;
+  --th-ground-2: #221708;
+  --th-display: 'Fraunces', 'Georgia', serif;
+  --th-mono: 'Space Mono', ui-monospace, 'SF Mono', monospace;
+  --th-safe-top: env(safe-area-inset-top, 0px);
+  --th-safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  /* ── Liquid Glass tokens ──────────────────────────────────────────────
+     Low-alpha layered translucency + blur is what reads as "glass" over a
+     moving camera feed. Keep the top layer alpha low (0.06–0.16) so the
+     scene shows through; the specular hairline + inset highlight is what
+     sells the glass edge instead of pure opacity. */
+  --glass-tint-top: rgba(255, 255, 255, 0.14);
+  --glass-tint-bottom: rgba(255, 255, 255, 0.04);
+  --glass-tint-warm: rgba(251, 191, 36, 0.09);
+  --glass-border: rgba(255, 255, 255, 0.22);
+  --glass-border-gold: rgba(251, 191, 36, 0.4);
+  --glass-highlight: rgba(255, 255, 255, 0.35);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --glass-blur: blur(16px) saturate(1.4);
+  --glass-blur-sm: blur(10px) saturate(1.3);
+  --glass-radius-sheet: 24px;
+  --glass-radius-chip: 999px;
+  --text-scrim: 0 1px 3px rgba(0, 0, 0, 0.65), 0 0 18px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Base resets scoped to the hunt UI ─────────────────────────────────── */
+.th-hud,
+.th-panel,
+.th-align-guide,
+.th-victory,
+.th-live-bar,
+.th-toast,
+.th-seek-back {
+  box-sizing: border-box;
+  font-family: var(--th-mono);
+  color: var(--th-ink);
+}
+
+.th-hud *,
+.th-panel *,
+.th-align-guide *,
+.th-victory *,
+.th-live-bar *,
+.th-toast *,
+.th-seek-back * {
+  box-sizing: border-box;
+}
+
+/* ── Shared glass surface mixin (applied via .th-glass utility class) ───
+   Every floating panel/chip/pill composes this same recipe:
+   1. a soft diagonal translucency gradient (low alpha, camera shows through)
+   2. backdrop-filter blur+saturate — the actual "glass" optical effect
+   3. a 1px specular hairline border
+   4. an inset top highlight + outer drop shadow for depth
+   Buttons and small chips reuse it at smaller radius via .th-glass-chip. */
+.th-glass {
+  background: linear-gradient(160deg, var(--glass-tint-top), var(--glass-tint-bottom));
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-highlight), var(--glass-shadow);
+}
+
+/* Faint moving specular sheen — subtle, not decorative AI-slop. A soft
+   diagonal band drifts across glass sheets to sell the "liquid" quality. */
+@keyframes th-sheen-drift {
+  0% { transform: translate(-30%, -30%) rotate(8deg); }
+  100% { transform: translate(30%, 30%) rotate(8deg); }
+}
+
+.th-glass-sheen {
+  position: relative;
+  overflow: hidden;
+}
+
+.th-glass-sheen::before {
+  content: '';
+  position: absolute;
+  inset: -60%;
+  z-index: 0;
+  background: linear-gradient(115deg, transparent 40%, rgba(255, 255, 255, 0.08) 50%, transparent 60%);
+  animation: th-sheen-drift 9s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+.th-glass-sheen > * {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes th-fade-up {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes th-pop-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes th-glow-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes th-compass-spin {
+  from { transform: translateX(-50%) rotate(0deg); }
+  to { transform: translateX(-50%) rotate(360deg); }
+}
+
+/* ── Top HUD strip — one slim glass pill, mode + status folded inline ───
+   This is the only always-on chrome during active play. It never grows past
+   a single compact pill; the hunt-hud readout appends as a second thin row
+   only while it has content. */
+.th-hud {
+  position: fixed;
+  top: calc(var(--th-safe-top) + 12px);
+  /* Start the whole HUD column clear of the fixed ".tmpl-back" "‹ Menu" chip
+     from shared/base.css (top-left, ~78px wide incl. padding, z-index:100000).
+     Offsetting the container's own left edge (rather than padding inside
+     .th-topline) means the glass pill's background never extends under the
+     menu chip in the first place — there is nothing to visually cover. We
+     can't edit base.css, so this offset lives here instead. */
+  left: 92px;
+  right: 12px;
+  z-index: 10;
+  pointer-events: none;
+  animation: th-fade-up 0.5s ease both;
+}
+
+.th-topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: var(--glass-radius-chip);
+  max-width: 380px;
+  margin: 0 auto;
+}
+
+#th-mode {
+  font-family: var(--th-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--th-gold-bright);
+  text-shadow: var(--text-scrim);
+}
+
+#th-counter {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--glass-border-gold);
+  border-radius: var(--glass-radius-chip);
+  background: var(--glass-tint-warm);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--th-gold);
+  white-space: nowrap;
+  text-shadow: var(--text-scrim);
+}
+
+/* Slim second line: status text. Folds under the topline pill only while it
+   has something to say, keeping the persistent HUD to a hairline of chrome. */
+.th-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 5px auto 0;
+  padding: 5px 12px;
+  max-width: 380px;
+  border-radius: var(--glass-radius-chip);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--th-ink);
+  text-shadow: var(--text-scrim);
+}
+
+.th-status::before {
+  content: '';
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--th-gold);
+  box-shadow: 0 0 6px var(--th-gold);
+}
+
+/* Auto-fade: setStatus() (game.js) adds this class ~3.5s after the last
+   message update so the status line doesn't linger as permanent chrome.
+   Any new call to setStatus() removes it again (see game.js setStatus). */
+.th-status {
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.th-status--faded {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+  pointer-events: none;
+}
+
+/* Persistent seek-mode readout: "Walk to a chest to collect — nearest X.Xm". */
+.th-hunt-hud {
+  margin: 5px auto 0;
+  padding: 5px 12px;
+  max-width: 380px;
+  border-radius: var(--glass-radius-chip);
+  border: 1px dashed var(--glass-border-gold);
+  background: var(--glass-tint-warm);
+  backdrop-filter: var(--glass-blur-sm);
+  -webkit-backdrop-filter: var(--glass-blur-sm);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--th-gold-bright);
+  text-shadow: var(--text-scrim);
+}
+
+/* Method badge stays hidden: the persistent HUD is capped at two slim lines
+   (topline + status/hunt-hud); method is a diagnostic detail, not something
+   the player needs mid-game. */
+.th-method {
+  display: none;
+}
+
+/* ── Shared panel shell (compact glass bottom-sheet) ─────────────────────
+   Sheets hug their content (max-height ~38vh) and are capped at 440px wide
+   with transparent margins on every side, so the camera feed is visible all
+   around them — never a full-bleed block. */
+.th-panel {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--th-safe-bottom) + 16px);
+  z-index: 10;
+  max-width: 380px;
+  margin: 0 auto;
+  max-height: 32vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 14px calc(10px + var(--th-safe-bottom) * 0);
+  border-radius: var(--glass-radius-sheet);
+  animation: th-fade-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* ── Start screen — centered glass card (menu, no camera pressure yet) ──── */
+.th-start {
+  position: fixed;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  max-height: 60vh;
+  text-align: center;
+  padding-top: 26px;
+  padding-bottom: 22px;
+}
+
+@media (min-width: 640px) {
+  .th-start {
+    left: 50%;
+    right: auto;
+    transform: translate(-50%, -50%);
+    width: 400px;
+  }
+}
+
+.th-start h1 {
+  margin: 0 0 5px;
+  font-family: var(--th-display);
+  font-size: 26px;
+  font-weight: 900;
+  font-optical-sizing: auto;
+  letter-spacing: 0.01em;
+  color: var(--th-gold-bright);
+  text-shadow: var(--text-scrim), 0 0 18px rgba(251, 191, 36, 0.3);
+}
+
+.th-start .th-kicker {
+  display: block;
+  margin-bottom: 8px;
+  font-family: var(--th-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: rgba(251, 191, 36, 0.75);
+  text-shadow: var(--text-scrim);
+}
+
+.th-start p {
+  margin: 0 0 18px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(253, 246, 227, 0.82);
+  text-shadow: var(--text-scrim);
+}
+
+.th-actions,
+.th-join-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.th-start .th-actions {
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+/* ── Start screen: "edit an existing hunt" affordance ────────────────────
+   A quieter third option below the two primary CTAs — small label + a
+   compact glass code input/Load row, reusing the seek panel's join-row
+   grid and input/button glass recipes so it stays visually consistent. */
+.th-edit-row {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--glass-border-gold);
+}
+
+.th-edit-row-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: rgba(253, 246, 227, 0.65);
+  text-shadow: var(--text-scrim);
+}
+
+.th-edit-join-row {
+  grid-template-columns: 1fr auto;
+}
+
+.th-edit-join-row input {
+  font-size: 13px;
+  min-height: 40px;
+}
+
+/* ── Buttons — glass pill controls with a warm gold press-state ─────────── */
+button {
+  font-family: var(--th-mono);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.th-btn,
+.th-actions button,
+#th-load-code,
+#th-refresh-spots,
+#th-play-again {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--glass-border-gold);
+  border-radius: var(--glass-radius-chip);
+  background: linear-gradient(160deg, rgba(251, 191, 36, 0.18), rgba(251, 191, 36, 0.06));
+  backdrop-filter: var(--glass-blur-sm);
+  -webkit-backdrop-filter: var(--glass-blur-sm);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 4px 14px rgba(0, 0, 0, 0.25);
+  color: var(--th-gold-bright);
+  font-family: var(--th-display);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-shadow: var(--text-scrim);
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.08s ease, border-color 0.15s ease, box-shadow 0.15s ease, flex 0.2s ease, min-height 0.2s ease, opacity 0.2s ease;
+}
+
+/* Step-gated hide-mode row: the flow is Scan -> Build -> Place -> Share, and
+   only one step is actionable at a time (game.js toggles `disabled` per
+   step; no markup/JS change here). Switch this row to flex so the single
+   enabled (current-step) button reads as primary and expands, while the
+   not-yet-actionable steps shrink into slim inactive chips — matching the
+   progressive-disclosure goal without touching JS wiring or ids. */
+.th-hide-panel .th-actions {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.th-hide-panel .th-actions button {
+  flex: 1 1 0;
+}
+
+.th-hide-panel .th-actions button:disabled {
+  flex: 0 1 auto;
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 9.5px;
+}
+
+/* Small variant for compact rows, e.g. the hunt-live bar's two-button row. */
+.th-btn-sm {
+  min-height: 38px;
+  padding: 0 13px;
+  font-size: 11px;
+}
+
+.th-btn:active,
+.th-actions button:active,
+#th-load-code:active,
+#th-refresh-spots:active,
+#th-play-again:active {
+  transform: scale(0.97);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.th-btn:disabled,
+.th-actions button:disabled,
+#th-load-code:disabled,
+#th-refresh-spots:disabled {
+  border-color: rgba(253, 246, 227, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(253, 246, 227, 0.32);
+  box-shadow: none;
+  cursor: default;
+}
+
+/* Primary CTAs on the start screen get a bolder gold fill to read as heroic taps */
+#th-start-hide,
+#th-start-seek {
+  min-height: 52px;
+  font-size: 13.5px;
+  background: linear-gradient(160deg, rgba(251, 191, 36, 0.32), rgba(251, 191, 36, 0.12));
+  border-color: rgba(251, 191, 36, 0.6);
+}
+
+#th-start-hide::before { content: '🗺️ '; }
+#th-start-seek::before { content: '🧭 '; }
+
+/* Scan button doubles as record/stop — pulses ember while capturing */
+#th-scan.is-scanning {
+  border-color: rgba(248, 113, 113, 0.5);
+  background: linear-gradient(160deg, rgba(248, 113, 113, 0.24), rgba(248, 113, 113, 0.08));
+  color: var(--th-ember);
+  animation: th-glow-pulse 1.3s ease-in-out infinite;
+}
+
+/* ── Scan assist readout ────────────────────────────────────────────────── */
+/* Scan readiness indicator — a 24-wedge coverage ring plus a
+   readout, flipping amber→green when the map is good enough to build. */
+.th-assist {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 6px 10px;
+  border: 1px dashed var(--glass-border-gold);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(253, 246, 227, 0.85);
+  font-size: 10px;
+  line-height: 1.35;
+  letter-spacing: 0.01em;
+  text-shadow: var(--text-scrim);
+}
+
+.th-radar-svg {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+}
+
+.th-radar-wedge {
+  fill: rgba(253, 246, 227, 0.12);
+  transition: fill 0.25s ease;
+}
+.th-radar-wedge--covered {
+  fill: var(--th-gold);
+}
+.th-assist--ready .th-radar-wedge--covered {
+  fill: var(--th-emerald);
+}
+
+.th-radar-center-text {
+  fill: var(--th-gold-bright);
+  font-family: var(--th-mono);
+  font-size: 13px;
+  font-weight: 700;
+}
+.th-assist--ready .th-radar-center-text {
+  fill: var(--th-emerald);
+}
+
+.th-radar-readout {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.th-radar-state {
+  font-family: var(--th-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--th-gold-bright);
+}
+.th-assist--ready .th-radar-state {
+  color: var(--th-emerald);
+}
+.th-radar-meta {
+  font-size: 10px;
+  color: rgba(253, 246, 227, 0.6);
+}
+.th-assist--moving .th-radar-state {
+  animation: th-assist-pulse 1s ease-in-out infinite;
+}
+@keyframes th-assist-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Cue the Build button once scanning is sufficient. */
+.th-build--cued {
+  border-color: var(--th-emerald) !important;
+  box-shadow: 0 0 0 1px var(--th-emerald), 0 0 16px rgba(52, 211, 153, 0.5);
+  animation: th-build-cue 1.4s ease-in-out infinite;
+}
+@keyframes th-build-cue {
+  0%, 100% { box-shadow: 0 0 0 1px var(--th-emerald), 0 0 10px rgba(52, 211, 153, 0.35); }
+  50% { box-shadow: 0 0 0 1px var(--th-emerald), 0 0 20px rgba(52, 211, 153, 0.65); }
+}
+
+/* Align auto-retry spinner on the align dock. */
+.th-align-spinner {
+  display: none;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(253, 246, 227, 0.25);
+  border-top-color: var(--th-gold-bright);
+  border-radius: 50%;
+  animation: th-align-spin 0.7s linear infinite;
+}
+.th-align-dock.th-aligning .th-align-spinner {
+  display: inline-block;
+}
+@keyframes th-align-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Hero share-code block — the reward moment ─────────────────────────── */
+.th-code-wrap {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px dashed var(--glass-border-gold);
+  text-align: center;
+}
+
+.th-code-label {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--th-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(251, 191, 36, 0.75);
+  text-shadow: var(--text-scrim);
+}
+
+.th-code {
+  position: relative;
+  display: inline-block;
+  padding: 9px 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(251, 191, 36, 0.22), transparent 70%),
+    linear-gradient(160deg, rgba(251, 191, 36, 0.16), rgba(251, 191, 36, 0.05));
+  backdrop-filter: var(--glass-blur-sm);
+  -webkit-backdrop-filter: var(--glass-blur-sm);
+  font-family: var(--th-display);
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: 0.16em;
+  color: var(--th-gold-bright);
+  text-shadow: 0 0 22px rgba(251, 191, 36, 0.55), var(--text-scrim);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 12px 30px rgba(251, 191, 36, 0.15);
+  animation: th-pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.th-note {
+  margin-top: 8px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: rgba(253, 246, 227, 0.75);
+  text-shadow: var(--text-scrim);
+}
+
+/* ── Seek panel: code entry + nearby spots ─────────────────────────────── */
+/* Note: no text-transform here — hunt codes are case-sensitive (see
+   CODE_CHARS in device-mapping-core/share.js, which mixes upper/lower case),
+   so the input must render exactly what the user typed. */
+input {
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--glass-radius-chip);
+  background: rgba(0, 0, 0, 0.22);
+  backdrop-filter: var(--glass-blur-sm);
+  -webkit-backdrop-filter: var(--glass-blur-sm);
+  color: var(--th-parchment);
+  font-family: var(--th-mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+input::placeholder {
+  color: rgba(253, 246, 227, 0.4);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--glass-border-gold);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.18);
+}
+
+.th-spots {
+  display: grid;
+  gap: 6px;
+  max-height: 20vh;
+  margin-top: 10px;
+  overflow-y: auto;
+}
+
+.th-spots:empty::before {
+  content: '';
+}
+
+/* Plain informational text state (no spots found) rendered via textContent */
+#th-seek-panel .th-spots:not(:has(.th-spot)) {
+  padding: 10px 4px;
+  color: rgba(253, 246, 227, 0.6);
+  font-size: 12px;
+  line-height: 1.6;
+  text-shadow: var(--text-scrim);
+}
+
+.th-spot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: var(--glass-radius-chip);
+  background: rgba(251, 191, 36, 0.07);
+  color: var(--th-parchment);
+  font-family: var(--th-mono);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  text-shadow: var(--text-scrim);
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+}
+
+.th-spot:hover,
+.th-spot:active {
+  background: rgba(251, 191, 36, 0.16);
+  border-color: rgba(251, 191, 36, 0.55);
+  transform: scale(0.99);
+}
+
+.th-spot[aria-current='true'] {
+  border-color: var(--th-gold);
+  background: rgba(251, 191, 36, 0.2);
+}
+
+.th-spot span:last-child {
+  flex-shrink: 0;
+  margin-left: 10px;
+  padding: 2px 9px;
+  border-radius: var(--glass-radius-chip);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--th-gold);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+}
+
+#th-refresh-spots {
+  width: 100%;
+  margin-top: 12px;
+}
+
+/* ── Compact completion state (hunt-live bar) — slim glass pill row ─────── */
+.th-live-bar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--th-safe-bottom) + 16px);
+  z-index: 10;
+  max-width: 380px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--glass-radius-sheet);
+  animation: th-fade-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.th-live-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.th-live-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(251, 191, 36, 0.75);
+  text-shadow: var(--text-scrim);
+}
+
+.th-live-code {
+  font-family: var(--th-display);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: var(--th-gold-bright);
+  text-shadow: var(--text-scrim);
+}
+
+.th-live-chests {
+  font-size: 10px;
+  color: rgba(253, 246, 227, 0.78);
+  text-shadow: var(--text-scrim);
+}
+
+.th-live-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* ── Alignment guide — picture-in-picture thumbnail ──────────────────────
+   A small tappable glass thumbnail docked in a top corner (~34vw) instead of
+   a fullscreen overlay, so the camera and reference pose are both visible at
+   once. Tap to expand for a closer look, tap again to shrink. */
+.th-align-guide {
+  position: fixed;
+  /* Docked below the HUD strip (topline pill + status line + safe margin) so
+     the guide thumbnail never overlaps #th-status, even while the status is
+     visible pre-fade. */
+  top: calc(var(--th-safe-top) + 132px);
+  right: 10px;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 20px;
+  animation: th-fade-up 0.4s ease both;
+}
+
+.th-align-guide img {
+  display: block;
+  width: 34vw;
+  max-width: 150px;
+  min-width: 100px;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 14px;
+  opacity: 0.9;
+  filter: sepia(0.25) saturate(1.1) contrast(1.05);
+  border: 1px solid var(--glass-border-gold);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  transition: width 0.2s ease, max-width 0.2s ease, opacity 0.15s ease;
+}
+
+.th-align-guide img:active {
+  opacity: 1;
+}
+
+/* Tapped state: thumbnail grows for a closer look at the reference pose. */
+.th-align-guide--expanded img {
+  width: 62vw;
+  max-width: 300px;
+}
+
+/* Short hint line inside the PiP thumbnail's glass chip. */
+.th-align-hint {
+  max-width: 34vw;
+  padding: 5px 10px;
+  border-radius: 12px;
+  font-size: 9.5px;
+  line-height: 1.35;
+  text-align: right;
+  color: rgba(253, 246, 227, 0.9);
+  text-shadow: var(--text-scrim);
+}
+
+/* ── Align control dock — independent top-level fixed layer ──────────────
+   Sibling of #th-align-guide (not nested) so the guide's layout can never
+   intercept taps; z-index above every other overlay, >=44px target. */
+#th-align-dock {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--th-safe-bottom) + 16px);
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  max-width: 400px;
+  margin: 0 auto;
+  padding: 10px 12px;
+  border-radius: var(--glass-radius-sheet);
+  pointer-events: auto;
+  animation: th-fade-up 0.4s ease both;
+}
+
+#th-align-dock span {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: rgba(253, 246, 227, 0.9);
+  text-shadow: var(--text-scrim);
+}
+
+#th-align {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid rgba(251, 191, 36, 0.6);
+  border-radius: var(--glass-radius-chip);
+  background: linear-gradient(160deg, rgba(251, 191, 36, 0.34), rgba(251, 191, 36, 0.14));
+  backdrop-filter: var(--glass-blur-sm);
+  -webkit-backdrop-filter: var(--glass-blur-sm);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 4px 14px rgba(0, 0, 0, 0.3);
+  color: var(--th-gold-bright);
+  font-family: var(--th-display);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-shadow: var(--text-scrim);
+  cursor: pointer;
+  pointer-events: auto;
+  position: relative;
+  z-index: 1;
+}
+
+#th-align:active {
+  transform: scale(0.96);
+}
+
+/* ── Victory screen — celebratory centered glass card ───────────────────── */
+.th-victory {
+  position: fixed;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  text-align: center;
+  padding-top: 32px;
+  padding-bottom: 28px;
+  overflow: hidden;
+  animation: th-pop-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@media (min-width: 640px) {
+  .th-victory {
+    left: 50%;
+    right: auto;
+    transform: translate(-50%, -50%);
+    width: 400px;
+  }
+}
+
+.th-victory::before {
+  content: '✦ ✧ ✦';
+  display: block;
+  margin-bottom: 10px;
+  font-size: 16px;
+  letter-spacing: 0.3em;
+  white-space: nowrap;
+  color: var(--th-gold);
+  text-shadow: 0 0 14px rgba(251, 191, 36, 0.6);
+  animation: th-glow-pulse 1.8s ease-in-out infinite;
+}
+
+.th-victory h2 {
+  margin: 0 0 8px;
+  font-family: var(--th-display);
+  font-size: 30px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  background: linear-gradient(180deg, var(--th-gold-bright), var(--th-gold) 60%, var(--th-copper));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 30px rgba(251, 191, 36, 0.35);
+  animation: th-fade-up 0.5s ease both;
+}
+
+.th-victory p {
+  margin: 0 0 22px;
+  font-size: 14px;
+  color: rgba(253, 246, 227, 0.82);
+  text-shadow: var(--text-scrim);
+}
+
+#th-play-again {
+  width: 100%;
+  min-height: 54px;
+  font-size: 14px;
+  background: linear-gradient(160deg, rgba(251, 191, 36, 0.34), rgba(251, 191, 36, 0.12));
+  border-color: rgba(251, 191, 36, 0.6);
+}
+
+/* Confetti-ish burst rays behind the victory card, CSS-only */
+.th-victory::after {
+  content: '';
+  position: absolute;
+  inset: -40% -20%;
+  z-index: -1;
+  background:
+    repeating-conic-gradient(from 0deg,
+      rgba(251, 191, 36, 0.09) 0deg 4deg,
+      transparent 4deg 18deg);
+  opacity: 0.6;
+  animation: th-compass-spin 40s linear infinite;
+  pointer-events: none;
+}
+
+/* ── Confetti overlay — celebratory pre-victory burst ────────────
+   Full-viewport, transparent, click-through container. Individual pieces
+   are plain <i> elements injected by game.js with randomized left offset,
+   color, size and animation-delay/duration set inline; the fall+sway+spin
+   keyframes here are shared by every piece. Self-cleaning: game.js removes
+   the container's children (and hides it) once the celebration timer ends. */
+.th-confetti {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.th-confetti-piece {
+  position: absolute;
+  top: -5vh;
+  width: 9px;
+  height: 14px;
+  opacity: 0.95;
+  --th-confetti-spin-from: 0deg;
+  --th-confetti-spin-to: 480deg;
+  will-change: transform, opacity;
+  animation-name: th-confetti-fall, th-confetti-sway, th-confetti-spin;
+  animation-timing-function: linear, ease-in-out, linear;
+  animation-iteration-count: 1, infinite, 1;
+  animation-fill-mode: forwards, none, forwards;
+}
+
+.th-confetti-piece--round {
+  border-radius: 50%;
+}
+
+@keyframes th-confetti-fall {
+  from { top: -5vh; opacity: 1; }
+  95% { opacity: 1; }
+  to { top: 108vh; opacity: 0.85; }
+}
+
+@keyframes th-confetti-sway {
+  0%, 100% { margin-left: -18px; }
+  50% { margin-left: 18px; }
+}
+
+@keyframes th-confetti-spin {
+  from { transform: rotate(var(--th-confetti-spin-from)); }
+  to { transform: rotate(var(--th-confetti-spin-to)); }
+}
+
+/* ── Toast — small glass pill, auto-dismiss ──────────────────────────────
+   Anchored just above the safe bottom, well clear of any panel/dock so it
+   never stacks awkwardly on other floating chrome. */
+.th-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--th-safe-bottom) + 84px);
+  z-index: 12;
+  max-width: min(86vw, 400px);
+  padding: 10px 18px;
+  border-radius: var(--glass-radius-chip);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--th-ink);
+  text-shadow: var(--text-scrim);
+  transform: translate(-50%, 8px);
+  opacity: 0;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease;
+  pointer-events: none;
+}
+
+.th-toast--visible {
+  transform: translate(-50%, 0);
+  opacity: 1;
+}
+
+/* ── Seek-back affordance — small glass chip, top-right ──────────────────
+   Docked top-right (not top-left) so it never overlaps the shared "‹ Menu"
+   chip (.tmpl-back in src/shared/base.css, top-left, z-index 100000). The
+   bottom-center is already occupied by the Align dock, so top-right is the
+   only free corner. */
+.th-seek-back {
+  position: fixed;
+  top: calc(var(--th-safe-top) + 12px);
+  right: 12px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: var(--glass-radius-chip);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--th-ink);
+  text-shadow: var(--text-scrim);
+  cursor: pointer;
+  animation: th-fade-up 0.3s ease both;
+}
+
+.th-seek-back:active {
+  transform: scale(0.96);
+}
+
+/* ── Content picker — bottom-sheet modal for choosing chest content ──────
+   Shown to the hider right after a ground tap places a chest, so they can
+   attach an image / .glb model / emoji to that specific chest. Reuses the
+   same glass-sheet shell as .th-panel but is a dedicated element so it can
+   overlay on demand without disturbing the hide-panel flow underneath. */
+.th-content-picker {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--th-safe-bottom) + 16px);
+  z-index: 20;
+  max-width: 380px;
+  margin: 0 auto;
+  max-height: 34vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px 14px calc(10px + var(--th-safe-bottom) * 0);
+  border-radius: var(--glass-radius-sheet);
+  animation: th-fade-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+}
+
+.th-content-picker h3 {
+  margin: 0 0 3px;
+  font-family: var(--th-display);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--th-gold-bright);
+  text-shadow: var(--text-scrim);
+}
+
+.th-content-picker p {
+  margin: 0 0 9px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(253, 246, 227, 0.75);
+  text-shadow: var(--text-scrim);
+}
+
+.th-content-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 9px;
+}
+
+.th-content-tab {
+  min-height: 40px;
+  padding: 0 8px;
+  border: 1px solid var(--glass-border-gold);
+  border-radius: var(--glass-radius-chip);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(253, 246, 227, 0.75);
+  font-family: var(--th-mono);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.th-content-tab[aria-selected='true'] {
+  background: linear-gradient(160deg, rgba(251, 191, 36, 0.28), rgba(251, 191, 36, 0.1));
+  border-color: var(--th-gold);
+  color: var(--th-gold-bright);
+}
+
+.th-content-pane {
+  margin-bottom: 12px;
+}
+
+.th-content-pane input[type='file'] {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px dashed var(--glass-border-gold);
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(253, 246, 227, 0.85);
+  font-family: var(--th-mono);
+  font-size: 11px;
+}
+
+.th-emoji-quickpick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.th-emoji-choice {
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--glass-border-gold);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 18px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+}
+
+.th-emoji-choice[aria-pressed='true'] {
+  background: rgba(251, 191, 36, 0.22);
+  border-color: var(--th-gold);
+  transform: scale(1.05);
+}
+
+#th-emoji-input {
+  width: 100%;
+  text-align: center;
+  font-size: 20px;
+}
+
+.th-content-note {
+  margin: 0 0 10px;
+  font-size: 10px;
+  line-height: 1.4;
+  color: rgba(251, 191, 36, 0.8);
+  text-shadow: var(--text-scrim);
+}
+
+.th-content-picker .th-actions {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* ── chest adjust panel — compact glass sheet ──────────
+   Redesigned to a short vertical footprint: a tight 3x3 d-pad for position
+   (instead of two full-width button rows) plus range sliders for rotation
+   and scale (instead of four more buttons). Reuses the same glass-sheet
+   shell as .th-content-picker but is now its own dedicated class so its
+   layout doesn't have to match the content picker's stacked panes. */
+.th-adjust-panel {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--th-safe-bottom) + 16px);
+  z-index: 20;
+  max-width: 300px;
+  margin: 0 auto;
+  max-height: 40vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 10px 12px calc(9px + var(--th-safe-bottom) * 0);
+  border-radius: var(--glass-radius-sheet);
+  animation: th-fade-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
+}
+
+/* While a placement panel (content picker / adjust) is open, hide the main
+   control panel so the two don't stack at the bottom of the screen. Uses a body
+   class rather than toggling the panel's own hidden state, so it reverts to
+   whatever state it was in once placement finishes. */
+body.th-placing #th-hide-panel {
+  display: none !important;
+}
+
+/* Inline collapse handle: a slim full-width chevron bar at the top of each
+   placement panel. Tapping it collapses the panel to just this handle so the
+   AR placement spot behind it is visible, then expands it again — no separate
+   floating button covering the rest of the UI. */
+.th-collapse-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 26px;
+  margin: -4px 0 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--th-gold-bright);
+  cursor: pointer;
+}
+.th-collapse-handle svg {
+  transition: transform 0.25s ease;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+/* Collapsed: hide everything except the handle → panel shrinks to a slim bar. */
+.th-content-picker.th-collapsed > :not(.th-collapse-handle),
+.th-adjust-panel.th-collapsed > :not(.th-collapse-handle) {
+  display: none;
+}
+.th-content-picker.th-collapsed,
+.th-adjust-panel.th-collapsed {
+  max-height: none;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+/* Chevron points down (collapse) when open, flips up (expand) when collapsed. */
+.th-collapsed .th-collapse-handle svg {
+  transform: rotate(180deg);
+}
+
+.th-adjust-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.th-adjust-head h3 {
+  margin: 0;
+  font-family: var(--th-display);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--th-gold-bright);
+  text-shadow: var(--text-scrim);
+}
+
+.th-adjust-head #th-adjust-summary {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(253, 246, 227, 0.75);
+  text-shadow: var(--text-scrim);
+  white-space: nowrap;
+}
+
+.th-adjust-row {
+  margin-bottom: 7px;
+}
+
+.th-adjust-row:last-of-type {
+  margin-bottom: 9px;
+}
+
+.th-adjust-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(251, 191, 36, 0.75);
+  text-shadow: var(--text-scrim);
+}
+
+/* Tight 3x3 d-pad instead of six full-size buttons — same six actions
+   (X±/Z±/Y±) in a much smaller footprint. Center cells double up as the two
+   Y controls since a d-pad only has one visual center. */
+.th-adjust-dpad {
+  display: grid;
+  grid-template-columns: repeat(3, 40px);
+  grid-template-rows: repeat(2, 36px);
+  gap: 5px;
+  justify-content: center;
+}
+
+.th-dpad-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--glass-border-gold);
+  border-radius: 10px;
+  background: linear-gradient(160deg, rgba(251, 191, 36, 0.16), rgba(251, 191, 36, 0.05));
+  backdrop-filter: var(--glass-blur-sm);
+  -webkit-backdrop-filter: var(--glass-blur-sm);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 3px 10px rgba(0, 0, 0, 0.22);
+  color: var(--th-gold-bright);
+  font-family: var(--th-display);
+  font-size: 12px;
+  font-weight: 700;
+  text-shadow: var(--text-scrim);
+  cursor: pointer;
+  transition: transform 0.08s ease, background 0.15s ease;
+}
+
+.th-dpad-btn:active {
+  transform: scale(0.92);
+  background: linear-gradient(160deg, rgba(251, 191, 36, 0.3), rgba(251, 191, 36, 0.1));
+}
+
+/* Explicit grid placement lays the d-pad out as:
+     [up]   [Y+]
+   [left] [right]
+   [down]  [Y-]
+   giving X/Z arrows their compass positions and the two Y buttons a shared
+   inner column, all inside a 3x2-ish compact block. */
+.th-dpad-btn--up { grid-column: 2; grid-row: 1; }
+.th-dpad-btn--left { grid-column: 1; grid-row: 2; }
+.th-dpad-btn--right { grid-column: 3; grid-row: 2; }
+.th-dpad-btn--down { grid-column: 2; grid-row: 2; }
+.th-dpad-btn--center { grid-column: 1; grid-row: 1; font-size: 10px; }
+.th-dpad-btn--center2 { grid-column: 3; grid-row: 1; font-size: 10px; }
+
+/* Glass range sliders — thin gold track, gold thumb, generous hit area.
+   Rotation: 0-360°. Scale: 0.5x-2x. Both live-update on 'input' (game.js). */
+.th-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  min-height: 28px;
+  height: 28px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.th-slider::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.15), rgba(251, 191, 36, 0.45));
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.th-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.15), rgba(251, 191, 36, 0.45));
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.th-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  /* >=28px hit area per spec, even though the visible knob is smaller —
+     the invisible padding ring is simulated via a radial gradient so the
+     tap target stays generous without looking oversized. */
+  width: 28px;
+  height: 28px;
+  margin-top: -12px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--th-gold-bright) 0 28%, rgba(251, 191, 36, 0.28) 30% 46%, transparent 48%);
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+.th-slider::-moz-range-thumb {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--th-gold-bright) 0 28%, rgba(251, 191, 36, 0.28) 30% 46%, transparent 48%);
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+.th-slider:active::-webkit-slider-thumb {
+  background:
+    radial-gradient(circle, #fff 0 28%, rgba(251, 191, 36, 0.4) 30% 50%, transparent 52%);
+}
+
+/* ── Responsive: wider viewports get a centered fixed-width column ─────── */
+@media (min-width: 640px) {
+  .th-hud,
+  .th-panel,
+  .th-live-bar,
+  .th-align-guide,
+  .th-content-picker,
+  .th-adjust-panel {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: 380px;
+  }
+
+  .th-start {
+    transform: translate(-50%, -50%);
+  }
+
+  .th-victory {
+    transform: translate(-50%, -50%);
+  }
+}
+
+@media (max-width: 380px) {
+  .th-code {
+    font-size: 26px;
+    padding: 9px 14px;
+  }
+  .th-start h1 {
+    font-size: 23px;
+  }
+}

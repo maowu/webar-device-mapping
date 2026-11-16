@@ -1,0 +1,22 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "maps": {
+      "$code": {
+        ".read": "$code.matches(/^[A-Za-z0-9]{4,6}$/)",
+        ".write": "$code.matches(/^[A-Za-z0-9]{4,6}$/) && newData.exists()",
+        ".validate": "newData.hasChild('createdAt') && newData.child('createdAt').isString()"
+      }
+    },
+
+    "spots": {
+      ".read": true,
+      "$code": {
+        ".write": "$code.matches(/^[A-Za-z0-9]{4,6}$/)",
+        ".validate": "newData.hasChildren(['code', 'name', 'lat', 'lng', 'createdAt']) && newData.child('code').val() === $code && newData.child('name').isString() && newData.child('name').val().length <= 80 && newData.child('lat').isNumber() && newData.child('lat').val() >= -90 && newData.child('lat').val() <= 90 && newData.child('lng').isNumber() && newData.child('lng').val() >= -180 && newData.child('lng').val() <= 180"
+      }
+    }
+  }
+}
